@@ -1,0 +1,1007 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>洪水後的創傷與復原：安渡急性壓力期VR放鬆訓練</title>
+   
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+   
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+   
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+   
+    <!-- A-Frame (WebXR Framework) -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+   
+    <!-- A-Frame Extra -->
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
+
+
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Noto Sans TC', sans-serif; background-color: #000; }
+        #root { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .interactive-ui { pointer-events: auto; }
+        .subtitle-fade { transition: opacity 1s ease-in-out; }
+       
+        /* 呼吸指引動畫 - 新增 */
+        @keyframes breathIn {
+            from { transform: scale(1); opacity: 0.6; }
+            to { transform: scale(1.3); opacity: 0.9; }
+        }
+        @keyframes breathOut {
+            from { transform: scale(1.3); opacity: 0.9; }
+            to { transform: scale(1); opacity: 0.6; }
+        }
+        .breath-in-anim {
+            animation: breathIn 3s ease-in-out forwards;
+        }
+        .breath-out-anim {
+            animation: breathOut 4s ease-in-out forwards;
+        }
+       
+        /* Canvas hidden but accessible for textures */
+        .texture-canvas { display: none; }
+    </style>
+</head>
+<body>
+
+
+    <!-- A-Frame 場景容器 -->
+    <div id="scene-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
+        <a-scene embedded loading-screen="dotsColor: white; backgroundColor: black">
+            <a-assets>
+                <a-mixin id="tree-trunk" geometry="primitive: cylinder; height: 3; radius: 0.2" material="color: #5D4037"></a-mixin>
+                <a-mixin id="tree-leaves" geometry="primitive: cone; height: 2; radius-bottom: 1.5" material="color: #2E7D32"></a-mixin>
+                <a-mixin id="flower-stem" geometry="primitive: cylinder; height: 0.5; radius: 0.02" material="color: #4CAF50"></a-mixin>
+
+
+                <!-- Canvases for Textures (Inside a-assets so A-Frame waits for them) -->
+                <canvas id="canvas-wall1" width="512" height="512"></canvas>
+                <canvas id="canvas-wall2" width="512" height="512"></canvas>
+                <canvas id="canvas-wall3" width="512" height="512"></canvas>
+                <canvas id="canvas-wall4" width="512" height="512"></canvas>
+                <canvas id="canvas-ceiling" width="512" height="512"></canvas>
+                <canvas id="canvas-floor" width="512" height="512"></canvas>
+            </a-assets>
+
+
+            <a-entity id="main-light" light="type: directional; color: #FFF; intensity: 0.8" position="-1 1 0.5"></a-entity>
+            <a-entity light="type: ambient; color: #CCC; intensity: 0.5"></a-entity>
+
+
+            <a-entity id="rig" position="0 1.6 0">
+                <a-camera look-controls wasd-controls="enabled: false">
+                    <a-cursor
+                        id="cursor"
+                        color="#FFD700"
+                        fuse="true"
+                        fuse-timeout="3000"
+                        raycaster="objects: .clickable"
+                        animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1"
+                        animation__fusing="property: scale; startEvents: fusing; easing: easeInCubic; dur: 3000; from: 1 1 1; to: 0.1 0.1 0.1"
+                        animation__mouseleave="property: scale; startEvents: mouseleave; easing: easeInCubic; dur: 500; to: 1 1 1">
+                    </a-cursor>
+                </a-camera>
+            </a-entity>
+
+
+            <a-entity id="dynamic-scene"></a-entity>
+            <a-sky id="sky" color="#E0F7FA"></a-sky>
+        </a-scene>
+    </div>
+
+
+    <div id="root"></div>
+
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+
+        // --- Icons ---
+        const IconPlayCircle = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        );
+        const IconShieldCheck = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        );
+        const IconHandHeart = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M11 19c0-1.6.8-3 2-4l-3-3L6 8l-4 4 3 3 5-5"/><path d="m19 21-7-5 1.5-3.5A2.2 2.2 0 0 1 17 14h2a2.2 2.2 0 0 1 2-1.5c1.4 0 2.5 1.1 2.5 2.5V19l-4.5 2z"/></svg>
+        );
+        const IconHeadphones = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 14v3a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M15 14v3a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2z"/><path d="M21 12a9 9 0 0 0-9-9 9 9 0 0 0-9 9"/></svg>
+        );
+        const IconPlay = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        );
+        const IconPause = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        );
+        const IconCircleCheck = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+        );
+        const IconPhone = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        );
+
+
+        // --- 音效引擎 (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+       
+        const playBloomSound = () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 2);
+        };
+
+
+        let windNode = null;
+        let windGain = null;
+        const toggleWindSound = (play) => {
+            if (play) {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                if (windNode) return;
+                const bufferSize = 2 * audioCtx.sampleRate;
+                const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+                windNode = audioCtx.createBufferSource();
+                windNode.buffer = noiseBuffer;
+                windNode.loop = true;
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 400;
+                windGain = audioCtx.createGain();
+                windGain.gain.value = 0.02;
+                windNode.connect(filter);
+                filter.connect(windGain);
+                windGain.connect(audioCtx.destination);
+                windNode.start();
+            } else {
+                if (windNode) {
+                    windNode.stop();
+                    windNode = null;
+                }
+            }
+        };
+
+
+        // --- 腳本資料 ---
+        const SCRIPT_DATA = [
+            // 【階段一：導入與安全化】
+            { text: "您好，歡迎來到這個空間。", postDelay: 3000, phase: 1 },
+            { text: "在這裡，您是安全的。這是一個完全為您準備的、穩定的地方。", postDelay: 4000, phase: 1 },
+            { text: "您可以先花一點時間，熟悉一下這個環境。慢慢地...環顧四周。", postDelay: 3000, phase: 1 },
+            { text: "您可以看到這裡柔和的光線... 感受這裡的平靜。", postDelay: 4000, phase: 1 },
+            { text: "現在，請您將注意力...慢慢地...帶回到您的呼吸上。", postDelay: 3000, phase: 1 },
+            { text: "不需要刻意改變它... 只是去感覺... 氣息正緩緩地吸進來...", postDelay: 3000, phase: 1, action: "breath_in" },
+            { text: "...然後，再緩緩地吐出去。", postDelay: 4000, phase: 1, action: "breath_out" },
+            { text: "做得很好。您只是安全地在這裡... 感覺著自己的一次呼吸... 又一次呼吸。", postDelay: 4000, phase: 1 },
+            { text: "接著，請您感覺一下您的身體...", postDelay: 2000, phase: 1 },
+            { text: "感覺您的雙腳... 是否正穩定地踩在地面上... 感覺一下地面帶給您的支持。", postDelay: 5000, phase: 1 },
+            { text: "感覺您的雙手... 是安穩地放置在您的腿上... 或是身旁。", postDelay: 3000, phase: 1 },
+            { text: "您現在... 就在這個安全的空間裡。您是安穩的。", postDelay: 4000, phase: 1 },
+            { text: "在這個過程中，您擁有完全的控制。任何時候您覺得需要暫停，您都可以隨時睜開眼睛，回到現實環境中。", postDelay: 4000, phase: 1 },
+            { text: "如果您覺得準備好了，我們將會一起探索這個空間，進行下一階段的放鬆。", postDelay: 3000, phase: 1 },
+            { text: "（場景轉換中...）", postDelay: 3000, phase: 1.5, action: "transition_nature" },
+
+
+            // 【階段二：感官覺察與放鬆】
+            { text: "您做得很好... 現在，您走進了一個充滿生機的地方。", postDelay: 3000, phase: 2 },
+            { text: "您依然是安全的。請您花一點時間... 看看您周圍的環境。", postDelay: 2000, phase: 2 },
+            { text: "注意這裡的光線... 看看陽光是如何穿過樹葉，灑在您前方的草地上。", postDelay: 5000, phase: 2 },
+            { text: "您可以看到這裡的色彩... 那些健康的綠色... 還有點綴在其中的、小小的花朵。", postDelay: 4000, phase: 2 },
+            { text: "您只是安全地在這裡，觀察著這些色彩。", postDelay: 3000, phase: 2 },
+            { text: "現在，請您聽一聽... 聽聽這裡的聲音。", postDelay: 2000, phase: 2 },
+            { text: "您也許能聽到... 風吹過樹葉的沙沙聲...", postDelay: 3000, phase: 2 },
+            { text: "...也許還能聽到... 遠處傳來的鳥鳴聲。", postDelay: 4000, phase: 2 },
+            { text: "這些聲音... 都是這個平靜地方的一部分。", postDelay: 3000, phase: 2 },
+            { text: "請再次將注意力... 帶回到您的呼吸上。", postDelay: 2000, phase: 2 },
+            { text: "感覺每一次吸氣... 帶進來的是這裡新鮮的空氣。", postDelay: 3000, phase: 2, action: "breath_in" },
+            { text: "每一次吐氣... 都好像能把您身體裡... 一點點的緊繃... 慢慢地送出去。", postDelay: 5000, phase: 2, action: "breath_out" },
+            { text: "做得很好。", postDelay: 2000, phase: 2 },
+            { text: "如果您願意... 您可以感覺一下... 這陣溫和的微風... 輕輕吹過您的皮膚。", postDelay: 4000, phase: 2 },
+            { text: "您不需要做任何事... 只是安全地... 感覺著這份平靜。", postDelay: 3000, phase: 2 },
+            { text: "在這個階段，您的所有感覺... 都是被允許的。", postDelay: 4000, phase: 2 },
+            { text: "您正安全地... 連結著您當下的感受。", postDelay: 3000, phase: 2 },
+
+
+            // 【階段三：資源建構與控制感】
+            { text: "您做得很好。您安穩地在這裡，感覺著這個空間的平靜。", postDelay: 3000, phase: 3 },
+            { text: "在這個安全的地方，您的存在本身...就具有力量。", postDelay: 3000, phase: 3 },
+            { text: "現在，請您看看前方... 那朵含苞待放的小花。", postDelay: 2000, phase: 3 },
+            { text: "請您試著... 將您全部的注意力... 輕輕地... 放在這朵花苞上。", postDelay: 3000, phase: 3 },
+            { text: "就好像... 您正用您溫和的專注力... 陪伴著它。", postDelay: 4000, phase: 3, waitForInteraction: true, targetBloom: 1 },
+            { text: "...您看見了嗎？", postDelay: 2000, phase: 3 },
+            { text: "正因為您的專注... 您的陪伴... 這朵花綻放了。", postDelay: 4000, phase: 3 },
+            { text: "這就是您的力量。一個安靜的、穩定的力量。", postDelay: 3000, phase: 3 },
+            { text: "我們再來試一次... 請看看旁邊的另一朵花苞。", postDelay: 2000, phase: 3 },
+            { text: "再一次... 只是輕輕地... 專注地看著它。", postDelay: 3000, phase: 3, waitForInteraction: true, targetBloom: 2 },
+            { text: "做得很好。您在這裡... 擁有控制感。您的意念... 您的專注... 正在帶來美好的改變。", postDelay: 5000, phase: 3, waitForInteraction: true, targetBloom: 3 },
+            { text: "這份力量... 這份讓事物綻放的能力... 一直都在您的心中。", postDelay: 3000, phase: 3 },
+            { text: "這就是您的內在資源。一份不會被沖走、不會被破壞的、平靜的力量。", postDelay: 4000, phase: 3 },
+            { text: "現在，請您帶著這份『您是有力量的』感覺... 再次回到您的呼吸上。", postDelay: 3000, phase: 3 },
+            { text: "吸氣... 感受這份力量...", postDelay: 3000, phase: 3, action: "breath_in" },
+            { text: "吐氣... 感受這份平靜...", postDelay: 4000, phase: 3, action: "breath_out" },
+
+
+            // 【階段四：穩定與疏通(初步)】
+            { text: "您做得很好。您正安穩地... 停留在這個平靜的空間裡。", postDelay: 3000, phase: 4 },
+            { text: "看一看您周圍... 那些因您的專注而綻放的花朵。", postDelay: 2000, phase: 4 },
+            { text: "這份平靜的力量... 就在您的心中。", postDelay: 4000, phase: 4 },
+            { text: "我知道，您經歷了非常艱難的時刻。", postDelay: 3000, phase: 4 },
+            { text: "但是現在... 此刻... 在這個空間裡... 您是安全的。", postDelay: 5000, phase: 4 },
+            { text: "請您再次... 將注意力帶回到您的呼吸上。", postDelay: 2000, phase: 4 },
+            { text: "感覺每一次的吸氣... 緩緩地吸進...", postDelay: 3000, phase: 4, action: "breath_in" },
+            { text: "...每一次的吐氣... 緩緩地吐出...", postDelay: 4000, phase: 4, action: "breath_out" },
+            { text: "您剛剛所感受到的平靜... 和那份讓花朵綻放的力量... 都是真實的。", postDelay: 3000, phase: 4 },
+            { text: "它們是您的一部分。無論何時，您都可以嘗試在心中... 重新連結這份平靜的感受。", postDelay: 4000, phase: 4 },
+            { text: "做得很好。", postDelay: 2000, phase: 4 },
+            { text: "現在，請您準備，我們將慢慢地... 帶著這份平靜與穩定，準備回到您所在的環境。", postDelay: 3000, phase: 4 },
+
+
+            // 【階段五：結束與定向】
+            { text: "您做得非常好... 您完整地經歷了這段平靜的時光。", postDelay: 3000, phase: 5 },
+            { text: "我們即將結束這次的練習...", postDelay: 2000, phase: 5 },
+            { text: "請您記住... 這份平靜的感受...", postDelay: 3000, phase: 5 },
+            { text: "也請記住... 那份讓花朵綻放的、安靜而穩定的力量... 這份力量是您的一部分，您可以把它帶走。", postDelay: 5000, phase: 5 },
+            { text: "現在... 這個安全的空間將會慢慢淡出...", postDelay: 2000, phase: 5 },
+            { text: "請您開始將注意力... 慢慢轉回到您身體所在的真實環境。", postDelay: 4000, phase: 5 },
+            { text: "再次感覺一下... 您的雙腳... 踩在真實地板上的感覺。", postDelay: 3000, phase: 5 },
+            { text: "感覺... 您正坐著的這張椅子... 帶給您身體的支持。", postDelay: 4000, phase: 5 },
+            { text: "您可以... 試著輕輕地... 動一動您的手指... 和腳趾。", postDelay: 3000, phase: 5 },
+            { text: "您已經準備好... 帶著這份平靜... 回到您所在的空間。", postDelay: 3000, phase: 5 },
+            { text: "當您自己感覺... 完全準備好的時候...", postDelay: 2000, phase: 5 },
+            { text: "...您再用您自己的速度... 慢慢地... 睜開您的眼睛。", postDelay: 5000, phase: 5 },
+            { text: "歡迎回來。", postDelay: 3000, phase: 5 }
+        ];
+
+
+        // --- Texture Generation Functions ---
+        const generateTextures = () => {
+            // Helper to get context
+            const getCtx = (id) => {
+                const el = document.getElementById(id);
+                return el ? el.getContext('2d') : null;
+            };
+           
+            // 1. Wall 1: Door (White wall, Wood Arched Door)
+            const ctx1 = getCtx('canvas-wall1');
+            if(ctx1) {
+                // Wall color
+                ctx1.fillStyle = '#fdfbf7'; // Creamy white
+                ctx1.fillRect(0,0,512,512);
+                // Door Frame
+                ctx1.fillStyle = '#5D4037'; // Dark Wood
+                const doorW = 200;
+                const doorH = 350;
+                const doorX = (512 - doorW)/2;
+                const doorY = 512 - doorH;
+               
+                // Draw Arch
+                ctx1.beginPath();
+                ctx1.arc(256, doorY + doorW/2, doorW/2, Math.PI, 0);
+                ctx1.fill();
+                // Draw Rect body
+                ctx1.fillRect(doorX, doorY + doorW/2, doorW, doorH - doorW/2);
+               
+                // Door panels detail
+                ctx1.strokeStyle = '#3E2723';
+                ctx1.lineWidth = 4;
+                ctx1.strokeRect(doorX + 20, doorY + doorW/2 + 20, doorW - 40, doorH - doorW/2 - 20);
+            }
+
+
+            // 2. Wall 2: Wood Slats (Dark background, vertical lines)
+            const ctx2 = getCtx('canvas-wall2');
+            if(ctx2) {
+                ctx2.fillStyle = '#3E2723'; // Dark brown base
+                ctx2.fillRect(0,0,512,512);
+                ctx2.fillStyle = '#4E342E'; // Lighter slat
+                for(let i=0; i<512; i+=40) {
+                    ctx2.fillRect(i, 0, 30, 512);
+                }
+            }
+
+
+            // 3. Wall 3: Dark Gray (Simple noise texture)
+            const ctx3 = getCtx('canvas-wall3');
+            if(ctx3) {
+                ctx3.fillStyle = '#424242'; // Dark gray
+                ctx3.fillRect(0,0,512,512);
+                // Add some noise
+                for(let i=0; i<5000; i++) {
+                    ctx3.fillStyle = Math.random() > 0.5 ? '#505050' : '#303030';
+                    ctx3.fillRect(Math.random()*512, Math.random()*512, 2, 2);
+                }
+            }
+
+
+            // 4. Wall 4: Teal with Arch hint
+            const ctx4 = getCtx('canvas-wall4');
+            if(ctx4) {
+                ctx4.fillStyle = '#00695C'; // Teal
+                ctx4.fillRect(0,0,512,512);
+                // Draw an arched shelf recess
+                ctx4.fillStyle = '#004D40'; // Darker teal shadow
+                ctx4.beginPath();
+                ctx4.arc(256, 200, 100, Math.PI, 0);
+                ctx4.lineTo(356, 400);
+                ctx4.lineTo(156, 400);
+                ctx4.fill();
+            }
+
+
+            // 5. Ceiling: Recessed Light & Fan
+            const ctx5 = getCtx('canvas-ceiling');
+            if(ctx5) {
+                // Base White
+                ctx5.fillStyle = '#fdfbf7';
+                ctx5.fillRect(0,0,512,512);
+
+
+                // -- Outer Linear Lights (Diagonal) --
+                ctx5.shadowBlur = 20;
+                ctx5.shadowColor = 'white';
+                ctx5.strokeStyle = 'white';
+                ctx5.lineWidth = 8;
+                ctx5.beginPath();
+                ctx5.moveTo(50, 50); ctx5.lineTo(150, 50);
+                ctx5.moveTo(362, 50); ctx5.lineTo(462, 50);
+                ctx5.moveTo(50, 462); ctx5.lineTo(150, 462);
+                ctx5.moveTo(362, 462); ctx5.lineTo(462, 462);
+                ctx5.stroke();
+                ctx5.shadowBlur = 0; // Reset shadow
+
+
+                // -- Recessed Area (Rounded Square) --
+                const recessSize = 300;
+                const rX = (512 - recessSize)/2;
+                const rY = (512 - recessSize)/2;
+                const radius = 60;
+               
+                ctx5.save();
+                ctx5.beginPath();
+                ctx5.moveTo(rX + radius, rY);
+                ctx5.lineTo(rX + recessSize - radius, rY);
+                ctx5.quadraticCurveTo(rX + recessSize, rY, rX + recessSize, rY + radius);
+                ctx5.lineTo(rX + recessSize, rY + recessSize - radius);
+                ctx5.quadraticCurveTo(rX + recessSize, rY + recessSize, rX + recessSize - radius, rY + recessSize);
+                ctx5.lineTo(rX + radius, rY + recessSize);
+                ctx5.quadraticCurveTo(rX, rY + recessSize, rX, rY + recessSize - radius);
+                ctx5.lineTo(rX, rY + radius);
+                ctx5.quadraticCurveTo(rX, rY, rX + radius, rY);
+                ctx5.closePath();
+               
+                // Fill recess with wood slats
+                ctx5.clip();
+                ctx5.fillStyle = '#5D4037'; // Dark wood background
+                ctx5.fillRect(rX, rY, recessSize, recessSize);
+                ctx5.fillStyle = '#795548'; // Lighter wood slat
+                for(let i=rX; i<rX+recessSize; i+=30) {
+                    ctx5.fillRect(i, rY, 20, recessSize);
+                }
+                ctx5.restore();
+
+
+                // -- Inner Glow (LED Strip around recess) --
+                ctx5.save();
+                ctx5.beginPath();
+                ctx5.moveTo(rX + radius, rY);
+                ctx5.lineTo(rX + recessSize - radius, rY);
+                ctx5.quadraticCurveTo(rX + recessSize, rY, rX + recessSize, rY + radius);
+                ctx5.lineTo(rX + recessSize, rY + recessSize - radius);
+                ctx5.quadraticCurveTo(rX + recessSize, rY + recessSize, rX + recessSize - radius, rY + recessSize);
+                ctx5.lineTo(rX + radius, rY + recessSize);
+                ctx5.quadraticCurveTo(rX, rY + recessSize, rX, rY + recessSize - radius);
+                ctx5.lineTo(rX, rY + radius);
+                ctx5.quadraticCurveTo(rX, rY, rX + radius, rY);
+                ctx5.closePath();
+               
+                ctx5.strokeStyle = '#FFFACD'; // LemonChiffon Light
+                ctx5.lineWidth = 12;
+                ctx5.shadowColor = '#FDD835'; // Golden glow
+                ctx5.shadowBlur = 30;
+                ctx5.stroke();
+                ctx5.restore();
+
+
+                // -- Fan --
+                const cx = 256;
+                const cy = 256;
+                ctx5.fillStyle = '#212121';
+                ctx5.beginPath();
+                ctx5.arc(cx, cy, 25, 0, Math.PI*2);
+                ctx5.fill();
+                ctx5.fillStyle = '#3E2723';
+                for(let i=0; i<3; i++) {
+                    ctx5.save();
+                    ctx5.translate(cx, cy);
+                    ctx5.rotate(i * (Math.PI * 2 / 3));
+                    ctx5.fillRect(-10, 25, 20, 100);
+                    ctx5.restore();
+                }
+            }
+
+
+            // 6. Floor: Carpet Tiles
+            const ctx6 = getCtx('canvas-floor');
+            if(ctx6) {
+                // Create carpet tile pattern
+                const colors = ['#9E9E9E', '#757575', '#616161', '#424242', '#BDBDBD']; // Shades of gray/slate
+               
+                const tileW = 64;
+                const tileH = 128; // Elongated rectangles
+               
+                for(let row = 0; row < 512/tileH + 1; row++) {
+                    for(let col = 0; col < 512/tileW + 1; col++) {
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        ctx6.fillStyle = color;
+                        // Stagger rows
+                        const offsetX = (row % 2 === 0) ? 0 : tileW/2;
+                        ctx6.fillRect(col * tileW - offsetX, row * tileH, tileW, tileH);
+                       
+                        // Add noise per tile for carpet texture
+                        ctx6.save();
+                        ctx6.beginPath();
+                        ctx6.rect(col * tileW - offsetX, row * tileH, tileW, tileH);
+                        ctx6.clip();
+                        for(let k=0; k<20; k++) {
+                            ctx6.fillStyle = 'rgba(255,255,255,0.05)';
+                            ctx6.fillRect((col * tileW - offsetX) + Math.random()*tileW, row*tileH + Math.random()*tileH, 2, 2);
+                        }
+                        ctx6.restore();
+                    }
+                }
+            }
+        };
+
+
+
+
+        // --- React Components ---
+
+
+        const Questionnaire = ({ onComplete }) => {
+            const [scores, setScores] = useState({ safety: 5, control: 5, calm: 5, resource: 5 });
+            const [feedback, setFeedback] = useState("");
+           
+            useEffect(() => {
+                window.speechSynthesis.cancel();
+            }, []);
+
+
+            const handleSubmit = () => {
+                const record = {
+                    date: new Date().toISOString(),
+                    scores,
+                    feedback
+                };
+                localStorage.setItem('vr_trauma_recovery_log_' + Date.now(), JSON.stringify(record));
+                onComplete();
+            };
+
+
+            return (
+                <div className="fixed inset-0 bg-black/90 text-white flex items-center justify-center p-4 interactive-ui z-50">
+                    <div className="bg-gray-800 p-5 rounded-lg w-[90%] max-w-md shadow-2xl border border-gray-600 max-h-[85vh] overflow-y-auto">
+                        <h2 className="text-xl font-bold mb-3 text-teal-300">體驗後自我評估</h2>
+                        <p className="mb-4 text-gray-300 text-xs">您的感受對我們很重要。</p>
+                        <div className="space-y-5">
+                            {[
+                                { id: 'safety', label: '安全感：在體驗中，您感到多安全？', min: '不安全', max: '非常安全' },
+                                { id: 'control', label: '控制感：您感覺到對環境的控制感嗎？', min: '完全失控', max: '完全掌控' },
+                                { id: 'calm', label: '平靜感：體驗結束後，您感到多平靜？', min: '焦慮', max: '非常平靜' },
+                                { id: 'resource', label: '資源感：這次體驗幫助您連結到內在力量了嗎？', min: '沒幫助', max: '非常有幫助' }
+                            ].map(item => (
+                                <div key={item.id}>
+                                    <label className="block mb-1 font-medium text-sm">{item.label}</label>
+                                    <input
+                                        type="range" min="0" max="10"
+                                        value={scores[item.id]}
+                                        onChange={(e) => setScores({...scores, [item.id]: parseInt(e.target.value)})}
+                                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                        <span>0 ({item.min})</span>
+                                        <span>10 ({item.max})</span>
+                                    </div>
+                                </div>
+                            ))}
+                            <div>
+                                <label className="block mb-1 font-medium text-sm">其他感受 (選填)</label>
+                                <textarea
+                                    className="w-full bg-gray-700 rounded p-2 text-sm"
+                                    rows="2"
+                                    value={feedback}
+                                    onChange={(e) => setFeedback(e.target.value)}
+                                    placeholder="想法..."
+                                ></textarea>
+                            </div>
+                        </div>
+                        <div className="mt-6 flex gap-4">
+                            <button onClick={handleSubmit} className="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 rounded transition text-sm">
+                                提交並結束
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        const Resources = ({ onRestart }) => (
+            <div className="fixed inset-0 bg-slate-900 text-white flex flex-col items-center justify-center p-8 interactive-ui z-50 text-center">
+                <IconCircleCheck size={64} className="text-teal-400 mb-6" />
+                <h2 className="text-3xl font-bold mb-4">您做得很好</h2>
+                <p className="text-xl mb-8 max-w-2xl text-gray-300">那份讓花朵綻放的、安靜而穩定的力量，一直都在您的心中。</p>
+                <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 w-full max-w-md mb-8 text-left">
+                    <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
+                        <IconPhone size={20} className="text-red-400"/> 專業支援資源
+                    </h3>
+                    <ul className="space-y-3 text-sm text-gray-300">
+                        <li>• 24小時心理諮詢專線 (台灣)：1925</li>
+                        <li>• 災後心理重建中心：0800-XXX-XXX</li>
+                    </ul>
+                </div>
+                <div className="flex gap-4 mt-6">
+                    <button onClick={onRestart} className="px-6 py-3 bg-teal-700 hover:bg-teal-600 rounded font-bold transition">
+                        重新體驗
+                    </button>
+                    <button onClick={() => window.close()} className="px-6 py-3 bg-gray-600 hover:bg-gray-500 rounded font-bold transition">
+                        離開
+                    </button>
+                </div>
+            </div>
+        );
+
+
+        const App = () => {
+            const [started, setStarted] = useState(false);
+            const [currentLineIndex, setCurrentLineIndex] = useState(0);
+            const [isPaused, setIsPaused] = useState(false);
+            const [finished, setFinished] = useState(false);
+            const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+            const [phase, setPhase] = useState(0);
+            const [bloomedCount, setBloomedCount] = useState(0);
+            const [waitingForInteraction, setWaitingForInteraction] = useState(false);
+            const timerRef = useRef(null);
+            const isSpeakingRef = useRef(false);
+            const utteranceRef = useRef(null);
+
+
+            // Generate textures on mount AND when started changes
+            useEffect(() => {
+                // Force texture generation
+                generateTextures();
+            }, [started]);
+
+
+            // 確保 SpeechSynthesis 初始化
+            useEffect(() => {
+                 window.speechSynthesis.getVoices();
+            }, []);
+
+
+            // [核心邏輯] TTS 播放與計時控制
+            useEffect(() => {
+                if (!started || finished || showQuestionnaire) return;
+               
+                // 如果正在暫停，或正在等待使用者互動，則不進行下一步
+                if (isPaused || waitingForInteraction) return;
+
+
+                const currentScript = SCRIPT_DATA[currentLineIndex];
+               
+                // 1. 更新 Phase 場景 (如果有的話)
+                if (currentScript.phase && currentScript.phase !== phase) {
+                    if (currentScript.action === "transition_nature") {
+                        setTimeout(() => setPhase(2), 1000); // 延遲切換以配合轉場
+                    } else {
+                        setPhase(currentScript.phase);
+                    }
+                }
+
+
+                // 2. 設置 TTS
+                window.speechSynthesis.cancel(); // 確保上一個音檔停止
+               
+                const textToSpeak = currentScript.text.replace(/[（）()]/g, ''); // 移除括號說明文字
+               
+                // Store in ref to prevent garbage collection interruptions
+                utteranceRef.current = new SpeechSynthesisUtterance(textToSpeak);
+                const utterance = utteranceRef.current;
+
+
+                utterance.lang = 'zh-TW';
+                utterance.rate = 0.7; // [調整語速] 0.7 比較適中，放慢一點點
+                utterance.pitch = 1;
+
+
+                const voices = window.speechSynthesis.getVoices();
+                const zhVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh-HK') || v.lang.includes('zh'));
+                if (zhVoice) utterance.voice = zhVoice;
+
+
+                // [解決斷句問題] 使用 setInterval hack
+                const keepAliveInterval = setInterval(() => {
+                    if (window.speechSynthesis.speaking) {
+                        window.speechSynthesis.pause();
+                        window.speechSynthesis.resume();
+                    } else {
+                        clearInterval(keepAliveInterval);
+                    }
+                }, 10000);
+
+
+                isSpeakingRef.current = true;
+
+
+                utterance.onend = () => {
+                    clearInterval(keepAliveInterval);
+                    isSpeakingRef.current = false;
+                   
+                    // 語音結束後，檢查是否需要等待互動
+                    if (currentScript.waitForInteraction) {
+                        const target = currentScript.targetBloom || 1;
+                        if (bloomedCount < target) {
+                            setWaitingForInteraction(true);
+                            return;
+                        }
+                    }
+
+
+                    // 語音結束後，等待指定的停頓時間 (postDelay)
+                    timerRef.current = setTimeout(() => {
+                        if (currentLineIndex < SCRIPT_DATA.length - 1) {
+                            setCurrentLineIndex(prev => prev + 1);
+                        } else {
+                            setFinished(true);
+                            setShowQuestionnaire(true);
+                            toggleWindSound(false);
+                        }
+                    }, currentScript.postDelay || 1000);
+                };
+
+
+                // 錯誤處理/備案
+                const safeDuration = (textToSpeak.length * 800) + (currentScript.postDelay || 1000) + 3000;
+                const backupTimer = setTimeout(() => {
+                    if (isSpeakingRef.current) {
+                        console.log("Force skipping line due to TTS timeout");
+                        clearInterval(keepAliveInterval);
+                        window.speechSynthesis.cancel();
+                        if (currentLineIndex < SCRIPT_DATA.length - 1) {
+                            setCurrentLineIndex(prev => prev + 1);
+                        }
+                    }
+                }, safeDuration);
+
+
+                window.speechSynthesis.speak(utterance);
+
+
+                return () => {
+                    clearInterval(keepAliveInterval);
+                    window.speechSynthesis.cancel();
+                    clearTimeout(timerRef.current);
+                    clearTimeout(backupTimer);
+                };
+
+
+            }, [currentLineIndex, started, isPaused, finished]); // 移除 waitingForInteraction 依賴，避免循環
+
+
+            // [監控互動狀態]
+            useEffect(() => {
+                if (!waitingForInteraction) return;
+
+
+                const currentScript = SCRIPT_DATA[currentLineIndex];
+                const target = currentScript.targetBloom || 1;
+
+
+                if (bloomedCount >= target) {
+                    setWaitingForInteraction(false);
+                    // 互動完成，稍微延遲後進入下一句
+                    setTimeout(() => {
+                        if (currentLineIndex < SCRIPT_DATA.length - 1) {
+                            setCurrentLineIndex(prev => prev + 1);
+                        }
+                    }, 2000);
+                }
+            }, [bloomedCount, waitingForInteraction]);
+
+
+
+
+            // A-Frame 實體控制
+            useEffect(() => {
+                const sceneEl = document.querySelector('a-scene');
+                const dynamicScene = document.getElementById('dynamic-scene');
+               
+                if (!dynamicScene) return;
+
+
+                while (dynamicScene.firstChild) {
+                    dynamicScene.removeChild(dynamicScene.firstChild);
+                }
+
+
+                if (phase === 1) {
+                    const floor = document.createElement('a-plane');
+                    floor.setAttribute('rotation', '-90 0 0');
+                    floor.setAttribute('width', '20');
+                    floor.setAttribute('height', '20');
+                    floor.setAttribute('material', 'src: #canvas-floor; repeat: 4 4');
+                    dynamicScene.appendChild(floor);
+
+
+                    const wall1 = document.createElement('a-entity');
+                    wall1.setAttribute('position', '0 5 -5');
+                    wall1.setAttribute('rotation', '0 0 0');
+                    wall1.setAttribute('geometry', 'primitive: box; width: 10; height: 10; depth: 0.1');
+                    wall1.setAttribute('material', 'src: #canvas-wall1; repeat: 1 1');
+                    dynamicScene.appendChild(wall1);
+
+
+                    const wall2 = document.createElement('a-entity');
+                    wall2.setAttribute('position', '5 5 0');
+                    wall2.setAttribute('rotation', '0 -90 0');
+                    wall2.setAttribute('geometry', 'primitive: box; width: 10; height: 10; depth: 0.1');
+                    wall2.setAttribute('material', 'src: #canvas-wall2; repeat: 1 1');
+                    dynamicScene.appendChild(wall2);
+
+
+                    const wall3 = document.createElement('a-entity');
+                    wall3.setAttribute('position', '0 5 5');
+                    wall3.setAttribute('rotation', '0 180 0');
+                    wall3.setAttribute('geometry', 'primitive: box; width: 10; height: 10; depth: 0.1');
+                    wall3.setAttribute('material', 'src: #canvas-wall3; repeat: 1 1');
+                    dynamicScene.appendChild(wall3);
+
+
+                    const wall4 = document.createElement('a-entity');
+                    wall4.setAttribute('position', '-5 5 0');
+                    wall4.setAttribute('rotation', '0 90 0');
+                    wall4.setAttribute('geometry', 'primitive: box; width: 10; height: 10; depth: 0.1');
+                    wall4.setAttribute('material', 'src: #canvas-wall4; repeat: 1 1');
+                    dynamicScene.appendChild(wall4);
+                   
+                    const ceiling = document.createElement('a-entity');
+                    ceiling.setAttribute('position', '0 10 0');
+                    ceiling.setAttribute('rotation', '90 0 0');
+                    ceiling.setAttribute('geometry', 'primitive: plane; width: 10; height: 10');
+                    ceiling.setAttribute('material', 'src: #canvas-ceiling; repeat: 1 1');
+                    dynamicScene.appendChild(ceiling);
+
+
+                } else if (phase >= 2) {
+                    document.getElementById('sky').setAttribute('color', '#87CEEB');
+
+
+                    const ground = document.createElement('a-circle');
+                    ground.setAttribute('rotation', '-90 0 0');
+                    ground.setAttribute('radius', '30');
+                    ground.setAttribute('color', '#7CB342');
+                    dynamicScene.appendChild(ground);
+
+
+                    const createTree = (x, z) => {
+                        const treeGroup = document.createElement('a-entity');
+                        treeGroup.setAttribute('position', `${x} 0 ${z}`);
+                        const trunk = document.createElement('a-entity');
+                        trunk.setAttribute('mixin', 'tree-trunk');
+                        trunk.setAttribute('position', '0 1.5 0');
+                        const leaves = document.createElement('a-entity');
+                        leaves.setAttribute('mixin', 'tree-leaves');
+                        leaves.setAttribute('position', '0 4 0');
+                        leaves.setAttribute('animation', `property: rotation; to: 2 2 0; loop: true; dir: alternate; dur: ${2000 + Math.random()*1000}`);
+                        treeGroup.appendChild(trunk);
+                        treeGroup.appendChild(leaves);
+                        dynamicScene.appendChild(treeGroup);
+                    };
+
+
+                    for (let i = 0; i < 20; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 6 + Math.random() * 10;
+                        createTree(Math.cos(angle) * radius, Math.sin(angle) * radius);
+                    }
+
+
+                    if (phase >= 3) {
+                        const positions = ['-1 0 -2', '1 0 -2', '0 0 -2.5'];
+                        positions.forEach((pos, idx) => {
+                            const flowerGroup = document.createElement('a-entity');
+                            flowerGroup.setAttribute('position', pos);
+
+
+                            const stem = document.createElement('a-entity');
+                            stem.setAttribute('mixin', 'flower-stem');
+                            stem.setAttribute('position', '0 0.25 0');
+                            flowerGroup.appendChild(stem);
+
+
+                            const bud = document.createElement('a-entity');
+                            bud.setAttribute('position', '0 0.6 0');
+                            bud.setAttribute('scale', '0.5 0.5 0.5');
+                            bud.id = `flower-${idx}`;
+                            bud.classList.add('clickable');
+
+
+                            // Hitbox
+                            const hitbox = document.createElement('a-sphere');
+                            hitbox.setAttribute('radius', '0.35');
+                            hitbox.setAttribute('visible', 'false');
+                            hitbox.classList.add('clickable');
+                            bud.appendChild(hitbox);
+
+
+                            // Center
+                            const center = document.createElement('a-cylinder');
+                            center.setAttribute('radius', '0.04');
+                            center.setAttribute('height', '0.15');
+                            center.setAttribute('color', '#FFEB3B');
+                            center.setAttribute('position', '0 0.05 0');
+                            bud.appendChild(center);
+
+
+                            // Petals
+                            const petalCount = 6;
+                            const petals = [];
+
+
+                            for(let i=0; i<petalCount; i++) {
+                                const petal = document.createElement('a-entity');
+                                const angle = (i / petalCount) * Math.PI * 2;
+                                const petalGeo = document.createElement('a-sphere');
+                                petalGeo.setAttribute('radius', '0.15');
+                                petalGeo.setAttribute('color', '#E91E63');
+                                petalGeo.setAttribute('scale', '1 2 0.2');
+                                petalGeo.setAttribute('position', '0 0.15 0');
+                               
+                                petal.setAttribute('rotation', `0 ${angle * (180/Math.PI)} 0`);
+                               
+                                const petalPivot = document.createElement('a-entity');
+                                petalPivot.setAttribute('rotation', '15 0 0');
+                               
+                                petalPivot.appendChild(petalGeo);
+                                petalGeo.setAttribute('position', '0 0.15 -0.05');
+                               
+                                petal.appendChild(petalPivot);
+                                bud.appendChild(petal);
+                                petals.push(petalPivot);
+                            }
+
+
+                            const interactionTarget = hitbox;
+                            interactionTarget.addEventListener('click', function(evt) {
+                                evt.stopPropagation();
+                                if (bud.getAttribute('data-bloomed') === 'true') return;
+                                bud.setAttribute('data-bloomed', 'true');
+                               
+                                playBloomSound();
+                                setBloomedCount(prev => prev + 1);
+
+
+                                bud.setAttribute('animation', 'property: scale; to: 1.2 1.2 1.2; dur: 2000; easing: easeOutElastic');
+                                petals.forEach((p) => {
+                                    p.setAttribute('animation', `property: rotation; to: -45 0 0; dur: 2000; easing: easeOutBack`);
+                                });
+                            });
+                           
+                            flowerGroup.appendChild(bud);
+                            dynamicScene.appendChild(flowerGroup);
+                        });
+                    }
+                } else if (phase === 5) {
+                     document.getElementById('sky').setAttribute('animation', 'property: color; to: #FFFFFF; dur: 2000');
+                }
+
+
+            }, [phase]);
+
+
+            const handleStart = () => {
+                setStarted(true);
+                setPhase(1);
+                toggleWindSound(true);
+                const utterance = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(utterance);
+            };
+
+
+            const handleRestart = () => {
+                window.speechSynthesis.cancel();
+                setStarted(false);
+                setCurrentLineIndex(0);
+                setFinished(false);
+                setShowQuestionnaire(false);
+                setPhase(0);
+                setBloomedCount(0);
+                setWaitingForInteraction(false);
+            };
+
+
+            if (!started) {
+                return (
+                    <div className="fixed inset-0 bg-slate-900 text-white flex flex-col items-center justify-center p-8 interactive-ui z-50 text-center">
+                        <div className="max-w-2xl">
+                            <h1 className="text-4xl font-bold mb-6 text-teal-400">洪水後的創傷與復原</h1>
+                            <h2 className="text-2xl mb-8">VR 放鬆訓練 (急性壓力期適用)</h2>
+                            <div className="bg-slate-800 p-6 rounded-lg text-left mb-8 border-l-4 border-teal-500">
+                                <p className="mb-4">本體驗旨在協助您在災後重建內在的安全感與控制感。</p>
+                                <button onClick={handleStart} className="px-8 py-4 bg-teal-600 hover:bg-teal-500 rounded-full text-xl font-bold shadow-lg transform hover:scale-105 transition flex items-center gap-2 mx-auto">
+                                    <IconPlayCircle size={24}/> 開始體驗
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+
+            if (showQuestionnaire) return <Questionnaire onComplete={() => setShowQuestionnaire(false)} />;
+            if (finished && !showQuestionnaire) return <Resources onRestart={handleRestart} />;
+
+
+            const currentScript = SCRIPT_DATA[currentLineIndex];
+
+
+            return (
+                <div className="fixed inset-0 pointer-events-none z-20 flex flex-col justify-between pb-4">
+                    <div className="w-full flex justify-between items-center p-4 interactive-ui bg-gradient-to-b from-black/50 to-transparent">
+                        <button onClick={() => { const newPaused = !isPaused; setIsPaused(newPaused); if (newPaused) window.speechSynthesis.pause(); else window.speechSynthesis.resume(); }} className="bg-white/20 hover:bg-white/30 backdrop-blur px-4 py-2 rounded-full text-white font-bold flex items-center gap-2 border border-white/30">
+                            {isPaused ? <IconPlay size={20}/> : <IconPause size={20}/>} {isPaused ? "繼續" : "暫停"}
+                        </button>
+                    </div>
+
+
+                    {/* 呼吸視覺引導 - 更新版 */}
+
+
+                    {!isPaused && (currentScript.action === 'breath_in' || currentScript.action === 'breath_out') && (
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none">
+                            <div className={`w-48 h-48 rounded-full border-4 border-teal-200/40 bg-teal-500/20 backdrop-blur-sm flex items-center justify-center ${currentScript.action === 'breath_in' ? 'breath-in-anim' : 'breath-out-anim'}`}>
+                                <div className="w-40 h-40 bg-teal-400/10 rounded-full"></div>
+                            </div>
+                            <p className="mt-8 text-teal-100 text-2xl font-bold tracking-[0.2em] uppercase drop-shadow-md">
+                                {currentScript.action === 'breath_in' ? '吸 氣' : '吐 氣'}
+                            </p>
+                        </div>
+                    )}
+
+
+                    <div className="w-full flex justify-center px-4 interactive-ui mt-auto">
+                        <div className="bg-black/70 backdrop-blur-md px-8 py-6 rounded-2xl max-w-3xl text-center border border-white/10 shadow-xl subtitle-fade">
+                            <p className="text-xl md:text-2xl text-white font-medium leading-relaxed">{currentScript.text}</p>
+                            {waitingForInteraction && <p className="text-yellow-400 text-sm mt-4 animate-pulse">請凝視前方的花苞，持續 3 秒<br/>(目前已綻放: {bloomedCount})</p>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

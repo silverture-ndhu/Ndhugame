@@ -1,0 +1,12 @@
+sm mt-4 animate-pulse">請凝視前方的花苞，持續 3 秒<br/>(目前已綻放: {bloomedCount})</p>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
